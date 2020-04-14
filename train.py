@@ -18,18 +18,18 @@ except:
 wdir = 'weights' + os.sep  # weights dir
 last = wdir + 'last.pt'
 best = wdir + 'best.pt'
-results_file = 'results.txt'
+results_file = 'train_results.txt'
 
 # Hyperparameters https://github.com/ultralytics/yolov3/issues/310
 
-hyp = {'giou': 3.54,  # giou loss gain
+hyp = {'giou': 1.0,  # giou loss gain # old: 3.54
        'cls': 37.4,  # cls loss gain
        'cls_pw': 1.0,  # cls BCELoss positive_weight
        'obj': 64.3,  # obj loss gain (*=img_size/320 if img_size != 320)
        'obj_pw': 1.0,  # obj BCELoss positive_weight
        'iou_t': 0.225,  # iou training threshold
-       'lr0': 0.01,  # initial learning rate (SGD=5E-3, Adam=5E-4)
-       'lrf': 0.0005,  # final learning rate (with cos scheduler)
+       'lr0': 1e-3,  # initial learning rate (SGD=5E-3, Adam=5E-4)
+       'lrf': 5e-5,  # final learning rate (with cos scheduler) # old: 5e-4
        'momentum': 0.937,  # SGD momentum
        'weight_decay': 0.000484,  # optimizer weight decay
        'fl_gamma': 0.0,  # focal loss gamma (efficientDet default is gamma=1.5)
@@ -108,6 +108,8 @@ def train():
 
     start_epoch = 0
     best_fitness = 0.0
+
+    # Load weights
     attempt_download(weights)
     if weights.endswith('.pt'):  # pytorch format
         # possible weights are '*.pt', 'yolov3-spp.pt', 'yolov3-tiny.pt' etc.
@@ -133,6 +135,7 @@ def train():
                 file.write(chkpt['training_results'])  # write results.txt
 
         start_epoch = chkpt['epoch'] + 1
+        print(start_epoch)
         del chkpt
 
     elif len(weights) > 0:  # darknet format
@@ -144,10 +147,19 @@ def train():
         model, optimizer = amp.initialize(model, optimizer, opt_level='O1', verbosity=0)
 
     # Scheduler https://github.com/ultralytics/yolov3/issues/238
-    lf = lambda x: (((1 + math.cos(
-        x * math.pi / epochs)) / 2) ** 1.0) * 0.95 + 0.05  # cosine https://arxiv.org/pdf/1812.01187.pdf
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf, last_epoch=start_epoch - 1)
+    # lf = lambda x: 1 - x / epochs  # linear ramp to zero
+    # lf = lambda x: 10 ** (hyp['lrf'] * x / epochs)  # exp ramp
+    # lf = lambda x: 1 - 10 ** (hyp['lrf'] * (1 - x / epochs))  # inverse exp ramp
+    lf = lambda x: 0.5 * (1 + math.cos(x * math.pi / epochs))  # cosine https://arxiv.org/pdf/1812.01187.pdff
+
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf, last_epoch=-1) # old: start_epoch - 1)
     # scheduler = lr_scheduler.MultiStepLR(optimizer, [round(epochs * x) for x in [0.8, 0.9]], 0.1, start_epoch - 1)
+
+    # Run dummy loops for last epochs 
+    # as the optimizer wasn’t used in the scheduler from the beginning, the param_group initial_lr is missing.
+    # Ref: https://discuss.pytorch.org/t/a-problem-occured-when-resuming-an-optimizer/28822/2 
+    for i in range(start_epoch):
+        scheduler.step()
 
     # Plot lr schedule
     # y = []
@@ -386,7 +398,7 @@ if __name__ == '__main__':
     parser.add_argument('--accumulate', type=int, default=4, help='batches to accumulate before optimizing')
     parser.add_argument('--cfg', type=str, default='cfg/yolov3-spp.cfg', help='*.cfg path')
     parser.add_argument('--data', type=str, default='data/coco2017.data', help='*.data path')
-    parser.add_argument('--multi-scale', action='store_true', help='adjust (67% - 150%) img_size every 10 batches')
+    parser.add_argument('--multi-scale', default=True, help='adjust (0.67 - 1.50) img_size every 10 batches')
     parser.add_argument('--img-size', nargs='+', type=int, default=[416], help='train and test image-sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', action='store_true', help='resume training from last.pt')
