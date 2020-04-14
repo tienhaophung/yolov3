@@ -29,7 +29,7 @@ hyp = {'giou': 1.0,  # giou loss gain # old: 3.54
        'obj_pw': 1.0,  # obj BCELoss positive_weight
        'iou_t': 0.225,  # iou training threshold
        'lr0': 1e-3,  # initial learning rate (SGD=5E-3, Adam=5E-4)
-       'lrf': 5e-5,  # final learning rate (with cos scheduler) # old: 5e-4
+       'lrf': 2e-5,  # final learning rate (with cos scheduler) # old: 5e-4
        'momentum': 0.937,  # SGD momentum
        'weight_decay': 0.000484,  # optimizer weight decay
        'fl_gamma': 0.0,  # focal loss gamma (efficientDet default is gamma=1.5)
