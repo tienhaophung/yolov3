@@ -1,4 +1,5 @@
 import argparse
+import sys
 import json
 
 from torch.utils.data import DataLoader
@@ -19,7 +20,8 @@ def test(cfg,
          single_cls=False,
          augment=False,
          model=None,
-         dataloader=None):
+         dataloader=None,
+         setname="valid"):
     # Initialize/load model and set device
     if model is None:
         device = torch_utils.select_device(opt.device, batch_size=batch_size)
@@ -52,7 +54,8 @@ def test(cfg,
     # Configure run
     data = parse_data_cfg(data)
     nc = 1 if single_cls else int(data['classes'])  # number of classes
-    path = data['valid']  # path to test images
+    path = data[setname]  # path to test images
+
     names = load_classes(data['names'])  # class names
     iouv = torch.linspace(0.5, 0.95, 10).to(device)  # iou vector for mAP@0.5:0.95
     iouv = iouv[0].view(1)  # comment for mAP@0.5:0.95
@@ -83,7 +86,7 @@ def test(cfg,
         whwh = torch.Tensor([width, height, width, height]).to(device)
 
         # Plot images with bounding boxes
-        f = 'test_batch%g.png' % batch_i  # filename
+        f = '%s_batch%g.png' % (setname, batch_i)  # filename
         if batch_i < 1 and not os.path.exists(f):
             plot_images(imgs=imgs, targets=targets, paths=paths, fname=f)
 
@@ -178,25 +181,34 @@ def test(cfg,
     else:
         nt = torch.zeros(1)
 
+    # Save results to file
+    res_file = "%s_results.txt" %setname
+    res_file_obj = open(res_file, "wt") 
+    print(s, file=res_file_obj) # print desc
     # Print results
     pf = '%20s' + '%10.3g' * 6  # print format
-    print(pf % ('all', seen, nt.sum(), mp, mr, map, mf1))
+    for file_obj in [sys.stdout, res_file_obj]:
+        print(pf % ('all', seen, nt.sum(), mp, mr, map, mf1), file=file_obj)
 
     # Print results per class
     if verbose and nc > 1 and len(stats):
-        for i, c in enumerate(ap_class):
-            print(pf % (names[c], seen, nt[c], p[i], r[i], ap[i], f1[i]))
+        for file_obj in [sys.stdout, res_file_obj]:
+            for i, c in enumerate(ap_class):
+                print(pf % (names[c], seen, nt[c], p[i], r[i], ap[i], f1[i]), file=file_obj)
 
     # Print speeds
     if verbose:
         t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (img_size, img_size, batch_size)  # tuple
         print('Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g' % t)
 
+    # Close file
+    res_file_obj.close()
+
     # Save JSON
     if save_json and map and len(jdict):
         print('\nCOCO mAP with pycocotools...')
         imgIds = [int(Path(x).stem.split('_')[-1]) for x in dataloader.dataset.img_files]
-        with open('results.json', 'w') as file:
+        with open('%s_results.json' %setname, 'w') as file:
             json.dump(jdict, file)
 
         try:
@@ -207,7 +219,7 @@ def test(cfg,
 
         # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
         cocoGt = COCO(glob.glob('../coco/annotations/instances_val*.json')[0])  # initialize COCO ground truth api
-        cocoDt = cocoGt.loadRes('results.json')  # initialize COCO pred api
+        cocoDt = cocoGt.loadRes('%s_results.json' %setname)  # initialize COCO pred api
 
         cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
         cocoEval.params.imgIds = imgIds  # [:32]  # only evaluate these images
@@ -237,6 +249,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1) or cpu')
     parser.add_argument('--single-cls', action='store_true', help='train as single-class dataset')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
+    parser.add_argument('--setname', default="valid", choices=["valid", "test"], help='Set name to evaluate')
     opt = parser.parse_args()
     opt.save_json = opt.save_json or any([x in opt.data for x in ['coco.data', 'coco2014.data', 'coco2017.data']])
     print(opt)
@@ -252,7 +265,8 @@ if __name__ == '__main__':
              opt.iou_thres,
              opt.save_json,
              opt.single_cls,
-             opt.augment)
+             opt.augment,
+             setname=opt.setname)
 
     elif opt.task == 'benchmark':  # mAPs at 320-608 at conf 0.5 and 0.7
         y = []
