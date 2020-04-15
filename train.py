@@ -29,7 +29,7 @@ hyp = {'giou': 1.0,  # giou loss gain # old: 3.54
        'obj_pw': 1.0,  # obj BCELoss positive_weight
        'iou_t': 0.225,  # iou training threshold
        'lr0': 1e-3,  # initial learning rate (SGD=5E-3, Adam=5E-4)
-       'lrf': 2e-5,  # final learning rate (with cos scheduler) # old: 5e-4
+       'lrf': 1e-5,  # final learning rate (with cos scheduler) # old: 5e-4
        'momentum': 0.937,  # SGD momentum
        'weight_decay': 0.000484,  # optimizer weight decay
        'fl_gamma': 0.0,  # focal loss gamma (efficientDet default is gamma=1.5)
@@ -68,10 +68,10 @@ def train():
     opt.multi_scale |= imgsz_min != imgsz_max  # multi if different (min, max)
     if opt.multi_scale:
         if imgsz_min == imgsz_max:
-            imgsz_min //= 1.5
-            imgsz_max //= 0.667
-        grid_min, grid_max = imgsz_min // gs, imgsz_max // gs
-        imgsz_max = grid_max * gs  # initialize with maximum multi_scale size
+            imgsz_min = int(imgsz_min // 1.5)
+            imgsz_max = int(imgsz_max // 0.667)
+        grid_min, grid_max = int(imgsz_min // gs), int(imgsz_max // gs)
+        imgsz_max = int(grid_max * gs)  # initialize with maximum multi_scale size
         print('Using multi-scale %g - %g' % (grid_min * gs, imgsz_max))
     img_size = imgsz_max
 
@@ -403,7 +403,7 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, default='cfg/yolov3-spp.cfg', help='*.cfg path')
     parser.add_argument('--data', type=str, default='data/coco2017.data', help='*.data path')
     parser.add_argument('--multi-scale', default=True, help='adjust (0.67 - 1.50) img_size every 10 batches')
-    parser.add_argument('--img-size', nargs='+', type=int, default=[416], help='[min_train, max-train, test] img sizes')
+    parser.add_argument('--img-size', nargs='+', type=int, default=[512], help='[min_train, max-train, test] img sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', action='store_true', help='resume training from last.pt')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
@@ -420,6 +420,7 @@ if __name__ == '__main__':
     opt.weights = last if opt.resume else opt.weights
     print(opt)
     opt.img_size.extend([opt.img_size[-1]] * (3 - len(opt.img_size)))  # extend to 3 sizes (min, max, test)
+    # print(opt.img_size)
     device = torch_utils.select_device(opt.device, apex=mixed_precision, batch_size=opt.batch_size)
     if device.type == 'cpu':
         mixed_precision = False
